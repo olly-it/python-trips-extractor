@@ -39,7 +39,6 @@ def find_time_near(text, keywords):
 
 def find_total_time(text):
     lines = text.splitlines()
-    low = text.lower()
     idx_tt = -1
     for i, line in enumerate(lines):
         ll = line.lower()
@@ -60,24 +59,9 @@ def find_total_time(text):
             mts = list(re.finditer(r"(\d{1,3}\s*:\s*[0-5]\d(?:\s*:\s*[0-5]\d)?)", before))
             if mts:
                 cand_tt = mts[-1].group(1)
-    idx_ta = low.find("tempo di allenamento")
-    if idx_ta == -1:
-        idx_ta = low.find("allenamento")
-    cand_before_ta = ""
-    if idx_ta != -1:
-        pre = text[:idx_ta]
-        mts = list(re.finditer(r"(\d{1,3}\s*:\s*[0-5]\d(?:\s*:\s*[0-5]\d)?)", pre))
-        if mts:
-            cand_before_ta = mts[-1].group(1)
-    s_tt = to_seconds_duration(cand_tt)
-    s_bt = to_seconds_duration(cand_before_ta)
-    if s_tt is not None and s_bt is not None:
-        return cand_tt if s_tt >= s_bt else cand_before_ta
-    if s_tt is not None:
+    if cand_tt:
         return cand_tt
-    if s_bt is not None:
-        return cand_before_ta
-    return find_time_near(text, ["tempo totale"]) or ""
+    return find_time_near(text, ["tempo totale", "durata totale"]) or ""
 
 def to_seconds_duration(s):
     if not s:
@@ -132,12 +116,11 @@ def main():
         if mkcal:
             kcal = mkcal.group(1)
         tt_str = find_total_time(text)
-        ta_str = find_time_near(text, ["tempo di allenamento", "allenamento", "tempo in movimento", "movimento"])
         all_times = re.findall(r"(\d{1,3}\s*:\s*[0-5]\d(?:\s*:\s*[0-5]\d)?)", text)
         def is_near_keywords(t):
             i = text.find(t)
             w = text[max(0, i - 50): i + 50].lower()
-            return any(k in w for k in ["tempo", "durata", "totale", "allenamento"])
+            return any(k in w for k in ["tempo", "durata", "totale"])
         candidates = [t for t in all_times if not is_near_keywords(t)]
         ora = ""
         for t in candidates:
@@ -149,12 +132,9 @@ def main():
         if not ora:
             ora = ts.strftime("%H:%M:%S")
         tt = to_seconds_duration(tt_str)
-        ta = to_seconds_duration(ta_str)
         pausa = ""
-        if tt is not None and ta is not None and tt >= ta:
-            pausa = format_duration(tt - ta)
         tempo_totale = format_duration(tt) if tt is not None else ""
-        print(f"  mezzo={mezzo}, percorso={start}->{arr}, tempo_totale={tempo_totale}, tempo_allenamento={format_duration(ta) if ta is not None else ''}")
+        print(f"  mezzo={mezzo}, percorso={start}->{arr}, tempo_totale={tempo_totale}")
         rows.append([date, ora, mezzo, start, arr, tempo_totale, km, pausa, kcal])
     with open(args.output, "w", newline="") as fh:
         w = csv.writer(fh)
