@@ -63,6 +63,62 @@ def find_total_time(text):
         return cand_tt
     return find_time_near(text, ["tempo totale", "durata totale"]) or ""
 
+def find_kcal(text):
+    low = text.lower()
+    inline = re.search(r"(\d[\s\d]{1,6})\s*[k]?\s*c\s*a\s*[l1]", low)
+    if inline:
+        return re.sub(r"\s+", "", inline.group(1))
+    for m in re.finditer(r"[k]?\s*c\s*a\s*[l1]", low):
+        i = m.start()
+        j = i - 1
+        buf = []
+        while j >= 0 and (
+            text[j].isdigit()
+            or text[j].isspace()
+            or text[j] in ",.-:;"
+            or text[j] in "bBlLIoOsSzZA"
+        ):
+            buf.append(text[j])
+            j -= 1
+        if buf:
+            raw = "".join(reversed(buf))
+            trans = {
+                "b": "5", "B": "8",
+                "S": "5", "s": "5",
+                "O": "0", "o": "0",
+                "l": "1", "I": "1",
+                "L": "4", "Z": "2",
+                "A": "4",
+            }
+            mapped = "".join(trans.get(ch, ch) for ch in raw)
+            num = re.sub(r"\s+|[,:;.-]", "", mapped)
+            if re.fullmatch(r"\d{2,5}", num):
+                return num
+    for m in re.finditer(r"\b(\d{2,5})\b", text):
+        end = m.end(1)
+        kpos = end
+        while kpos < len(text) and text[kpos].isspace():
+            kpos += 1
+        if kpos < len(text) and text[kpos].lower() == 'k':
+            look = text[kpos+1:kpos+6].lower()
+            if re.search(r"c\s*a\s*[l1]", look):
+                return m.group(1)
+    nums = []
+    for m in re.finditer(r"\b(\d{2,5})\b", text):
+        start, end = m.span(1)
+        next_ch = text[end:end+1].lower()
+        if next_ch == "m":
+            continue
+        try:
+            val = int(m.group(1))
+            if val <= 999:
+                nums.append(val)
+        except Exception:
+            pass
+    if nums:
+        return str(max(nums))
+    return ""
+
 def to_seconds_duration(s):
     if not s:
         return None
@@ -111,10 +167,7 @@ def main():
         mkm = re.search(r"(\d{1,3}(?:[\.,]\d{1,2})?)\s*km\b", low)
         if mkm:
             km = mkm.group(1).replace(",", ".")
-        kcal = ""
-        mkcal = re.search(r"\b(\d{2,5})\s*(kcal|cal)\b", low)
-        if mkcal:
-            kcal = mkcal.group(1)
+        kcal = find_kcal(text)
         tt_str = find_total_time(text)
         all_times = re.findall(r"(\d{1,3}\s*:\s*[0-5]\d(?:\s*:\s*[0-5]\d)?)", text)
         def is_near_keywords(t):
@@ -134,7 +187,10 @@ def main():
         tt = to_seconds_duration(tt_str)
         pausa = ""
         tempo_totale = format_duration(tt) if tt is not None else ""
-        print(f"  mezzo={mezzo}, percorso={start}->{arr}, tempo_totale={tempo_totale}")
+        print(f"  mezzo={mezzo}, percorso={start}->{arr}, tempo_totale={tempo_totale}, kcal={kcal}")
+        for idx, line in enumerate(text.splitlines()):
+            if re.search(r"cal", line, re.IGNORECASE):
+                print(f"    OCR cal line {idx}: {line}")
         rows.append([date, ora, mezzo, start, arr, tempo_totale, km, pausa, kcal])
     with open(args.output, "w", newline="") as fh:
         w = csv.writer(fh)
